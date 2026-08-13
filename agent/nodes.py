@@ -1,13 +1,15 @@
-from langchain_openai import ChatOpenAI
 
+from dotenv import load_dotenv
+
+load_dotenv()
 from .state import AgentState
 
+from langchain_groq import ChatGroq
 
-llm = ChatOpenAI(
-    model="gpt-5.4",
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
     temperature=0.7
 )
-
 
 def call_llm(state: AgentState):
 
