@@ -15,4 +15,5 @@ torch
 torchaudio
 
 # TTS
-pyttsx3
+piper-tts
+soundfile

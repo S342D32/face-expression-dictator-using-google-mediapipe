@@ -201,7 +201,7 @@ def main():
     stt = STT(model_size="base")
     logger.info("STT ready")
 
-    logger.info("Initializing TTS (pyttsx3)...")
+    logger.info("Initializing TTS (Piper)...")
     tts = TTS()
     logger.info("TTS ready")
 
