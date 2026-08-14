@@ -1,3 +1,18 @@
+# Vision
 mediapipe
 opencv-python
 numpy
+
+# LLM / Agent
+langgraph
+langchain-core
+langchain-ollama
+
+# STT
+faster-whisper
+sounddevice
+torch
+torchaudio
+
+# TTS
+pyttsx3
