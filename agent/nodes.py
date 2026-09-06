@@ -21,7 +21,7 @@ llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
 tool_node = ToolNode(ALL_TOOLS)
 
-MAX_TOOL_CALLS = 3   # hard stop — prevents infinite tool loops
+MAX_TOOL_CALLS = 3
 
 
 # ----------------------------------------------------------------
@@ -32,21 +32,35 @@ def call_llm(state: AgentState) -> dict:
 
     logger.info("call_llm node | question=%s", state["question"])
 
+    dist_cm   = state.get("face_status", {}).get("distance_cm")
+    dist_info = f"{dist_cm} cm" if dist_cm is not None else "unknown"
+
     system = SystemMessage(content=(
-        "You are an AI assistant connected to a camera-based face "
-        "expression detection system and a physical robot.\n\n"
+        "You are a fun, chill AI buddy connected to a face expression camera and a physical robot. "
+        "Talk like a close friend — casual, witty, sometimes funny. No corporate tone ever.\n\n"
         "Current face status:\n"
         f"{state['face_status']}\n\n"
-        "Use the face status only when relevant. "
-        "You have tools to control the robot — use them ONCE when the user asks "
-        "for a physical action like shaking hands, waving, or blinking LED. "
-        "After calling a tool, always give a short spoken response. "
-        "Respond naturally and briefly."
+        f"Object distance (VL53L0X sensor): {dist_info}\n"
+        "If something came very close (under 30cm), react in a funny, surprised or sassy way. "
+        "Like 'arre bhai itne paas kyu aa gaye!' or 'yo that's way too close man!' — be creative.\n\n"
+        "Tools available:\n"
+        "- shake_hand: handshake / haath milao\n"
+        "- wave: wave / haath hilao\n"
+        "- blink_led(times): blink LED / light blink karo\n"
+        "- led_on: LED on / light jalao\n"
+        "- led_off: LED off / light band karo\n"
+        "- set_servo(angle): move servo / servo ghoomao\n"
+        "- get_weather(city): weather / mausam\n"
+        "- search_youtube(query): open YouTube with search\n\n"
+        "Rules:\n"
+        "1. Match the user's language exactly — Hindi reply for Hindi, Odia reply for Odia, English for English, mix if they mix.\n"
+        "2. Keep replies short and conversational, like texting a friend.\n"
+        "3. If a tool matches the request, call it once then confirm casually.\n"
+        "4. Never sound like a customer support bot or a formal assistant."
     ))
 
     human = HumanMessage(content=state["question"])
 
-    # Build message history — system + human always at front
     history  = state.get("messages", [])
     messages = [system, human] + history
 
@@ -94,7 +108,6 @@ def run_tools(state: AgentState) -> dict:
 
 def should_use_tools(state: AgentState) -> str:
 
-    # Hard stop — prevent infinite loops
     if state.get("tool_call_count", 0) >= MAX_TOOL_CALLS:
         logger.warning("Max tool calls reached — forcing END")
         return "end"
@@ -107,8 +120,8 @@ def should_use_tools(state: AgentState) -> str:
     last = messages[-1]
 
     if hasattr(last, "tool_calls") and last.tool_calls:
-        logger.info("Routing → tools")
+        logger.info("Routing -> tools")
         return "tools"
 
-    logger.info("Routing → end")
+    logger.info("Routing -> end")
     return "end"

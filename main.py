@@ -1,5 +1,6 @@
 import cv2
 import os
+import asyncio
 import logging
 import threading
 
@@ -11,6 +12,7 @@ from agent.graph import agent
 
 from audio.stt import STT
 from audio.tts import TTS
+from server.websocket import run_server, distance_state
 
 
 # ============================================================
@@ -118,6 +120,7 @@ def handle_utterance(question: str, face_state: dict, tts: TTS, ai_state: dict):
     print(f"\nYou: {question}")
 
     face_status = face_state.get("latest", {})
+    face_status["distance_cm"] = face_state.get("distance_cm")
 
     logger.info(
         "Face status: detected=%s | expression=%s | smile=%.2f",
@@ -198,28 +201,30 @@ def main():
     # --------------------------------------------------------
 
     logger.info("Initializing STT (Whisper + Silero VAD)...")
-    stt = STT(model_size="base")
+    stt = STT()
     logger.info("STT ready")
+
+    # --------------------------------------------------------
+    # asyncio loop for ESP32 WebSocket server
+    # --------------------------------------------------------
+
+    ws_loop = asyncio.new_event_loop()
 
     logger.info("Initializing TTS (Piper)...")
     tts = TTS()
+    tts.set_stt(stt)
     logger.info("TTS ready")
 
     # --------------------------------------------------------
     # Shared state
     # --------------------------------------------------------
 
-    # face_state holds latest MediaPipe result — updated every frame
     face_state = {"latest": {}}
-
-    # ai_state drives banner + prevents double-trigger
-    ai_state = {
-        "busy":   False,
-        "status": "LISTENING",
-    }
+    ai_state   = {"busy": False, "status": "LISTENING"}
+    prox_state = {"last_cm": None, "alerted": False}  # proximity trigger state
 
     # --------------------------------------------------------
-    # Start continuous STT — mic always on
+    # Start continuous STT — PC mic always on
     # --------------------------------------------------------
 
     def on_speech(text: str):
@@ -230,6 +235,17 @@ def main():
         ).start()
 
     stt.start_continuous(on_speech)
+
+    # --------------------------------------------------------
+    # Start ESP32 WebSocket server in its own asyncio loop
+    # --------------------------------------------------------
+
+    def start_ws_server():
+        asyncio.set_event_loop(ws_loop)
+        ws_loop.run_until_complete(run_server(stt, on_speech))
+
+    threading.Thread(target=start_ws_server, daemon=True).start()
+    logger.info("ESP32 WebSocket server started on ws://0.0.0.0:8765")
 
     logger.info("----------------------------------------")
     logger.info("System ready — just speak naturally")
@@ -248,8 +264,18 @@ def main():
             result = detector.detect(frame)
             state  = analyze_face(result)
 
-            # Always keep latest face status available for AI
+            # Always keep latest face status + distance available for AI
             face_state["latest"] = state
+            face_state["distance_cm"] = distance_state["cm"]
+
+            # Proximity trigger — react when object comes within 30cm
+            cm = distance_state["cm"]
+            if cm is not None and not ai_state["busy"]:
+                if cm < 30 and not prox_state["alerted"]:
+                    prox_state["alerted"] = True
+                    on_speech(f"कोई चीज़ {cm} सेंटीमीटर दूर आ गई है")
+                elif cm >= 30:
+                    prox_state["alerted"] = False
 
             # ------------------------------------------------
             # Display

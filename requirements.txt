@@ -17,3 +17,8 @@ torchaudio
 # TTS
 piper-tts
 soundfile
+
+# ESP32 WebSocket bridge
+websockets
+
+dotenv
