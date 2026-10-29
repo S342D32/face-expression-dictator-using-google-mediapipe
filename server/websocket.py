@@ -119,7 +119,7 @@ class ESP32AudioBridge:
 
                 for offset in range(0, len(chunk) - CHUNK_SIZE + 1, CHUNK_SIZE):
                     window    = chunk[offset : offset + CHUNK_SIZE]
-                    is_speech = self._stt._is_speech(window.reshape(-1, 1))
+                    is_speech = self._stt.is_speech(window.reshape(-1, 1))
                     chunk_count += 1
 
                     if is_speech:
@@ -155,7 +155,7 @@ class ESP32AudioBridge:
             logger.warning("ESP32 audio too short — discarding")
             return
         loop = asyncio.get_event_loop()
-        text = await loop.run_in_executor(None, self._stt._transcribe, frames)
+        text = await loop.run_in_executor(None, self._stt.transcribe, frames)
         if text.strip():
             logger.info("ESP32 utterance: %s", text)
             self._on_utterance(text)
@@ -198,5 +198,9 @@ async def run_server(stt, on_utterance, _unused_queue=None):
 
     bridge = ESP32AudioBridge(stt, on_utterance)
     logger.info("ESP32 WebSocket server starting on ws://%s:%d", HOST, PORT)
-    async with websockets.serve(bridge.handle, HOST, PORT, max_size=2**21):  # 2MB max
+    async with websockets.serve(
+        bridge.handle, HOST, PORT,
+        max_size=2**21,
+        reuse_address=True,
+    ):
         await asyncio.Future()

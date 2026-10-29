@@ -1,0 +1,34 @@
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8765:8765"   # ESP32 WebSocket
+      - "8766:8766"   # App Socket.IO
+    env_file: .env
+    volumes:
+      - ./models:/app/models   # face_landmarker.task
+      - ./logs:/app/logs
+    depends_on:
+      - ollama
+
+  # Optional — only needed if LLM_PROVIDER=ollama
+  # Remove this service if using LLM_PROVIDER=groq on cloud
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Uncomment if your VPS has a GPU:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data:

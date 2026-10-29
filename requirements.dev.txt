@@ -1,0 +1,10 @@
+# ── Dev-only dependencies (local development, not needed on cloud) ────────────
+# Install with: pip install -r requirements.txt -r requirements.dev.txt
+
+# ── Local STT ─────────────────────────────────────────────────────────────────
+faster-whisper                   # STT_PROVIDER=whisper_local
+torch                            # Silero VAD (used by whisper_local + sarvam_stt dev mode)
+torchaudio
+
+# ── Local TTS ─────────────────────────────────────────────────────────────────
+piper-tts                        # TTS_PROVIDER=piper

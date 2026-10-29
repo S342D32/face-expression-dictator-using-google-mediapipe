@@ -1,113 +1,51 @@
-import cv2
-import os
+"""
+Entry point — Face Expression AI System (APK edition).
+
+Startup order:
+  1. Logging
+  2. Config validation
+  3. STT + TTS via provider factory
+  4. FaceDetector (MediaPipe)
+  5. ESP32 WebSocket server  (port 8765)
+  6. App Socket.IO server    (port 8766)
+  7. Main loop (headless — phone/ESP32 drive camera + mic)
+"""
+
 import asyncio
 import logging
+import os
+import time
 import threading
 
-from camera.camera import Camera
+from config.settings import settings
+from core.logging_setup import setup_logging
+from core.provider_factory import get_stt, get_tts
 from camera.face_detector import FaceDetector
 from processing.expression import analyze_face
+from server.websocket import run_server as run_ws_server, distance_state
+from server.api import init_api, run_api_server
 
-from agent.graph import agent
+# ── Logging (must be first) ───────────────────────────────────────────────────
 
-from audio.stt import STT
-from audio.tts import TTS
-from server.websocket import run_server, distance_state
-
-
-# ============================================================
-# Logging
-# ============================================================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
+setup_logging(
+    log_dir=settings.log_dir,
+    log_level=settings.log_level,
+    max_bytes=settings.log_max_bytes,
+    backup_count=settings.log_backup_count,
 )
 
 logger = logging.getLogger(__name__)
 
+# ── Shared state (accessed by api.py via import) ──────────────────────────────
 
-# ============================================================
-# Model path
-# ============================================================
-
-MODEL_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "models",
-    "face_landmarker.task"
-)
+_face_state: dict = {"latest": {}, "distance_cm": None}
+_detector: FaceDetector | None = None
 
 
-# ============================================================
-# Display
-# ============================================================
+# ── AI pipeline ───────────────────────────────────────────────────────────────
 
-def draw_status(frame, state):
-
-    if not state["face_detected"]:
-
-        cv2.putText(
-            frame, "NO FACE", (30, 60),
-            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
-        )
-
-        return frame
-
-    mouth_text = "OPEN" if state["mouth_open"] else "CLOSED"
-
-    labels = [
-        (f"Mouth: {mouth_text}",              (0, 255, 0),     0.8),
-        (f"Expression: {state['expression']}", (0, 255, 0),     0.8),
-        (f"Mouth score: {state['mouth_score']:.2f}", (255,255,255), 0.7),
-        (f"Smile: {state['smile_score']:.2f}",       (255,255,255), 0.7),
-        (f"Eyes: {'CLOSED' if state['eyes_closed'] else 'OPEN'}", (255,255,255), 0.7),
-    ]
-
-    for i, (text, color, scale) in enumerate(labels):
-        cv2.putText(
-            frame, text, (30, 60 + i * 40),
-            cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2
-        )
-
-    return frame
-
-
-def draw_ai_banner(frame, status: str):
-    """Top banner showing LISTENING / THINKING / SPEAKING."""
-
-    colors = {
-        "LISTENING": (0,   200, 0),
-        "THINKING":  (255, 200, 0),
-        "SPEAKING":  (0,   140, 255),
-    }
-
-    color = colors.get(status, (255, 255, 255))
-
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], 50), (0, 0, 0), -1)
-
-    cv2.putText(
-        frame,
-        f"[ {status} ]",
-        (20, 35),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.0,
-        color,
-        2
-    )
-
-    return frame
-
-
-# ============================================================
-# AI pipeline — called from STT callback (background thread)
-# ============================================================
-
-def handle_utterance(question: str, face_state: dict, tts: TTS, ai_state: dict):
-    """
-    Runs in the STT callback thread.
-    face_state is a mutable dict always holding the latest face analysis.
-    """
-
+def handle_utterance(question: str, stt, tts, ai_state: dict) -> None:
+    """Called from STT callback thread or Socket.IO thread."""
     if ai_state["busy"]:
         logger.warning("AI busy — utterance dropped: %s", question)
         return
@@ -115,206 +53,162 @@ def handle_utterance(question: str, face_state: dict, tts: TTS, ai_state: dict):
     ai_state["busy"]   = True
     ai_state["status"] = "THINKING"
 
-    logger.info("Utterance received: %s", question)
+    logger.info("Utterance: %s", question)
 
-    print(f"\nYou: {question}")
-
-    face_status = face_state.get("latest", {})
-    face_status["distance_cm"] = face_state.get("distance_cm")
-
-    logger.info(
-        "Face status: detected=%s | expression=%s | smile=%.2f",
-        face_status.get("face_detected"),
-        face_status.get("expression", "n/a"),
-        face_status.get("smile_score", 0.0),
-    )
+    face_status = dict(_face_state.get("latest", {}))
+    face_status["distance_cm"] = _face_state.get("distance_cm")
 
     try:
+        from agent.graph import agent
 
-        result = agent.invoke({
-            "question":        question,
-            "face_status":     face_status,
-            "response":        "",
-            "tool_call_count": 0,
-            "messages":        [],
-        })
+        config = {"configurable": {"thread_id": "esp32-session"}}
+        result = agent.invoke(
+            {
+                "question":        question,
+                "face_status":     face_status,
+                "response":        "",
+                "tool_call_count": 0,
+                "session_id":      "esp32-session",
+                "messages":        [],
+            },
+            config=config,
+        )
 
-        response = result.get("response", "").strip() or "I have completed the action."
-
+        response = result.get("response", "").strip() or "Done!"
         logger.info("AI response: %s", response)
 
-        print(f"\nAI: {response}")
-
         ai_state["status"] = "SPEAKING"
+        tts_bytes = tts.synthesize(response, language=getattr(stt, "detected_language", "en"))
 
-        tts.speak(response)
+        from server.websocket import broadcast_tts_audio
+        broadcast_tts_audio(tts_bytes, settings.tts_target_rate)
 
     except Exception:
-
-        logger.exception("LangGraph/LLM error")
-        tts.speak("Sorry, something went wrong.")
+        logger.exception("Agent pipeline error")
+        fallback = tts.synthesize("Sorry, something went wrong.", language="en")
+        from server.websocket import broadcast_tts_audio
+        broadcast_tts_audio(fallback, settings.tts_target_rate)
 
     finally:
-
         ai_state["busy"]   = False
         ai_state["status"] = "LISTENING"
-
         logger.info("AI pipeline done — back to listening")
 
 
-# ============================================================
-# Main
-# ============================================================
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-def main():
+def main() -> None:
+    global _detector
 
-    logger.info("========================================")
-    logger.info("Starting Face Expression AI System")
-    logger.info("========================================")
+    logger.info("=" * 50)
+    logger.info("Face Expression AI System — starting")
+    logger.info("LLM=%s | STT=%s | TTS=%s",
+                settings.llm_provider, settings.stt_provider, settings.tts_provider)
+    logger.info("=" * 50)
 
-    # --------------------------------------------------------
-    # Check model
-    # --------------------------------------------------------
+    # ── Validate model file ───────────────────────────────────────────────
+    model_path = os.path.join(os.path.dirname(__file__), settings.face_model_path)
+    if not os.path.exists(model_path):
+        logger.error("MediaPipe model not found: %s", model_path)
+        raise FileNotFoundError(f"Model not found: {model_path}")
 
-    logger.info("Checking MediaPipe model...")
+    # ── Build providers ───────────────────────────────────────────────────
+    logger.info("Building STT provider...")
+    try:
+        stt = get_stt(settings)
+    except Exception:
+        logger.exception("Failed to build STT provider")
+        raise
 
-    if not os.path.exists(MODEL_PATH):
-        logger.error("Model not found: %s", MODEL_PATH)
-        raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
+    logger.info("Building TTS provider...")
+    try:
+        tts = get_tts(settings)
+    except Exception:
+        logger.exception("Failed to build TTS provider")
+        raise
 
-    logger.info("MediaPipe model found")
+    # ── FaceDetector ──────────────────────────────────────────────────────
+    logger.info("Initialising FaceDetector...")
+    try:
+        _detector = FaceDetector(model_path=model_path, num_faces=settings.num_faces)
+    except Exception:
+        logger.exception("Failed to initialise FaceDetector")
+        raise
+    logger.info("FaceDetector ready")
 
-    # --------------------------------------------------------
-    # Camera + MediaPipe
-    # --------------------------------------------------------
+    # ── Shared AI state ───────────────────────────────────────────────────
+    ai_state = {"busy": False, "status": "LISTENING"}
+    prox_state = {"alerted": False}
 
-    logger.info("Initializing camera...")
-    camera = Camera()
-    logger.info("Camera initialized")
-
-    logger.info("Initializing FaceDetector...")
-    detector = FaceDetector(model_path=MODEL_PATH)
-    logger.info("FaceDetector initialized")
-
-    # --------------------------------------------------------
-    # STT + TTS
-    # --------------------------------------------------------
-
-    logger.info("Initializing STT (Whisper + Silero VAD)...")
-    stt = STT()
-    logger.info("STT ready")
-
-    # --------------------------------------------------------
-    # asyncio loop for ESP32 WebSocket server
-    # --------------------------------------------------------
-
-    ws_loop = asyncio.new_event_loop()
-
-    logger.info("Initializing TTS (Piper)...")
-    tts = TTS()
-    tts.set_stt(stt)
-    logger.info("TTS ready")
-
-    # --------------------------------------------------------
-    # Shared state
-    # --------------------------------------------------------
-
-    face_state = {"latest": {}}
-    ai_state   = {"busy": False, "status": "LISTENING"}
-    prox_state = {"last_cm": None, "alerted": False}  # proximity trigger state
-
-    # --------------------------------------------------------
-    # Start continuous STT — PC mic always on
-    # --------------------------------------------------------
-
-    def on_speech(text: str):
+    def on_speech(text: str) -> None:
         threading.Thread(
             target=handle_utterance,
-            args=(text, face_state, tts, ai_state),
-            daemon=True
+            args=(text, stt, tts, ai_state),
+            daemon=True,
         ).start()
 
-    stt.start_continuous(on_speech)
+    # ── asyncio event loop (shared by both servers) ───────────────────────
+    loop = asyncio.new_event_loop()
 
-    # --------------------------------------------------------
-    # Start ESP32 WebSocket server in its own asyncio loop
-    # --------------------------------------------------------
+    # ── Init Socket.IO API server ─────────────────────────────────────────
+    init_api(stt, tts, _face_state, loop)
 
-    def start_ws_server():
-        asyncio.set_event_loop(ws_loop)
-        ws_loop.run_until_complete(run_server(stt, on_speech))
+    # ── Start ESP32 WebSocket server ──────────────────────────────────────
+    def start_servers() -> None:
+        asyncio.set_event_loop(loop)
 
-    threading.Thread(target=start_ws_server, daemon=True).start()
-    logger.info("ESP32 WebSocket server started on ws://0.0.0.0:8765")
+        async def _run_both():
+            await asyncio.gather(
+                run_ws_server(stt, on_speech),
+                run_api_server(),
+            )
 
-    logger.info("----------------------------------------")
-    logger.info("System ready — just speak naturally")
-    logger.info("Press Q = Quit")
-    logger.info("----------------------------------------")
+        loop.run_until_complete(_run_both())
 
+    # ── Server thread — NOT daemon so process stays alive ─────────────────
+    server_thread = threading.Thread(target=start_servers, daemon=False)
+    server_thread.start()
+
+    # Give servers a moment to bind ports
+    import time
+    time.sleep(1.5)
+    if not server_thread.is_alive():
+        logger.error("Server thread died during startup — check port conflicts")
+        raise RuntimeError("Server thread failed to start")
+
+    logger.info("ESP32 WebSocket  → ws://0.0.0.0:%d", settings.ws_port)
+    logger.info("App Socket.IO    → http://0.0.0.0:%d", settings.api_port)
+    logger.info("Logs             → %s/", settings.log_dir)
+    logger.info("-" * 50)
+    logger.info("System ready — press Ctrl+C to stop")
+
+    # ── Main loop ─────────────────────────────────────────────────────────
     try:
-
         while True:
+            _face_state["distance_cm"] = distance_state["cm"]
 
-            # ------------------------------------------------
-            # Camera + analysis
-            # ------------------------------------------------
-
-            frame  = camera.read()
-            result = detector.detect(frame)
-            state  = analyze_face(result)
-
-            # Always keep latest face status + distance available for AI
-            face_state["latest"] = state
-            face_state["distance_cm"] = distance_state["cm"]
-
-            # Proximity trigger — react when object comes within 30cm
             cm = distance_state["cm"]
             if cm is not None and not ai_state["busy"]:
                 if cm < 30 and not prox_state["alerted"]:
                     prox_state["alerted"] = True
-                    on_speech(f"कोई चीज़ {cm} सेंटीमीटर दूर आ गई है")
+                    on_speech(f"Something is {cm} cm away!")
                 elif cm >= 30:
                     prox_state["alerted"] = False
 
-            # ------------------------------------------------
-            # Display
-            # ------------------------------------------------
+            # Restart server thread if it crashes
+            if not server_thread.is_alive():
+                logger.error("Server thread died — restarting...")
+                server_thread = threading.Thread(target=start_servers, daemon=False)
+                server_thread.start()
 
-            frame = draw_status(frame, state)
-            frame = draw_ai_banner(frame, ai_state["status"])
-
-            cv2.imshow("Face Expression AI System", frame)
-
-            # ------------------------------------------------
-            # Keyboard — only Q to quit now
-            # ------------------------------------------------
-
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                logger.info("Q pressed — quitting")
-                break
+            time.sleep(0.05)
 
     except KeyboardInterrupt:
-
-        logger.info("Keyboard interrupt received")
+        logger.info("Keyboard interrupt — shutting down")
 
     finally:
-
-        logger.info("Shutting down...")
-
-        stt.stop_continuous()
-        logger.info("STT stopped")
-
-        camera.release()
-        logger.info("Camera released")
-
-        detector.close()
-        logger.info("FaceDetector closed")
-
-        tts.stop()
-        logger.info("TTS stopped")
-
-        cv2.destroyAllWindows()
+        if _detector:
+            _detector.close()
         logger.info("System stopped")
 
 

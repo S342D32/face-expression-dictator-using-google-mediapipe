@@ -1,0 +1,95 @@
+2026-10-27 12:33:58 | INFO     | agent.graph | LLM model ready with 9 tools bound
+2026-10-27 12:33:58 | INFO     | agent.graph | Building LangGraph agent...
+2026-10-27 12:33:58 | INFO     | agent.graph | LangGraph checkpointer: in-memory (no persistence)
+2026-10-27 12:33:58 | INFO     | agent.graph | LangGraph agent ready
+2026-10-27 12:33:58 | DEBUG    | agent.graph | call_llm | question=Thank you. | tool_call_count=0
+2026-10-27 12:35:37 | DEBUG    | agent.graph | call_llm | question=you | tool_call_count=0
+2026-10-27 12:36:32 | INFO     | agent.graph | LLM model ready with 9 tools bound
+2026-10-27 12:36:32 | INFO     | agent.graph | Building LangGraph agent...
+2026-10-27 12:36:32 | INFO     | agent.graph | LangGraph checkpointer: in-memory (no persistence)
+2026-10-27 12:36:32 | INFO     | agent.graph | LangGraph agent ready
+2026-10-27 12:36:32 | DEBUG    | agent.graph | call_llm | question=Thank you. | tool_call_count=0
+2026-10-27 12:36:34 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=21
+2026-10-27 12:36:34 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:42:16 | DEBUG    | agent.graph | call_llm | question=Thank you. | tool_call_count=0
+2026-10-27 12:42:17 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=1
+2026-10-27 12:42:17 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:43:20 | INFO     | agent.graph | LLM model ready with 9 tools bound
+2026-10-27 12:43:20 | INFO     | agent.graph | Building LangGraph agent...
+2026-10-27 12:43:20 | INFO     | agent.graph | LangGraph checkpointer: in-memory (no persistence)
+2026-10-27 12:43:20 | INFO     | agent.graph | LangGraph agent ready
+2026-10-27 12:43:20 | DEBUG    | agent.graph | call_llm | question=. | tool_call_count=0
+2026-10-27 12:43:21 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=92
+2026-10-27 12:43:21 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:44:11 | DEBUG    | agent.graph | call_llm | question=Hi, Dr. O'Connor. | tool_call_count=0
+2026-10-27 12:44:12 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=95
+2026-10-27 12:44:12 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:46:25 | INFO     | agent.graph | LLM model ready with 9 tools bound
+2026-10-27 12:46:25 | INFO     | agent.graph | Building LangGraph agent...
+2026-10-27 12:46:25 | INFO     | agent.graph | LangGraph checkpointer: in-memory (no persistence)
+2026-10-27 12:46:25 | INFO     | agent.graph | LangGraph agent ready
+2026-10-27 12:46:25 | DEBUG    | agent.graph | call_llm | question=Thank you. | tool_call_count=0
+2026-10-27 12:46:26 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=21
+2026-10-27 12:46:26 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:48:19 | DEBUG    | agent.graph | call_llm | question=வணக்கம்! உப்பா, இவ்வளவு ரெஸ்தில் சொந்து கிடையாயா! | tool_call_count=0
+2026-10-27 12:48:21 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=91
+2026-10-27 12:48:21 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:50:17 | DEBUG    | agent.graph | call_llm | question=Hello, how are you doing? | tool_call_count=0
+2026-10-27 12:50:20 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=88
+2026-10-27 12:50:20 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:50:51 | DEBUG    | agent.graph | call_llm | question=दो यू नो बाउट गांधी जी | tool_call_count=0
+2026-10-27 12:50:52 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=175
+2026-10-27 12:50:52 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:56:15 | DEBUG    | agent.graph | call_llm | question=Move the motor to forward | tool_call_count=0
+2026-10-27 12:56:16 | DEBUG    | agent.graph | call_llm done | tool_calls=1 | content_len=0
+2026-10-27 12:56:16 | DEBUG    | agent.graph | Routing -> tools
+2026-10-27 12:56:16 | DEBUG    | agent.graph | run_tools | executing 1 tool call(s)
+2026-10-27 12:56:16 | INFO     | agent.tools | [TOOL] motor_move | direction=forward cmd=F speed=50
+2026-10-27 12:56:16 | WARNING  | agent.tools | motor_move: ESP32 car HTTP timeout
+2026-10-27 12:56:16 | DEBUG    | agent.graph | run_tools done | outputs: Car command sent (timeout — car may still respond)
+2026-10-27 12:56:16 | DEBUG    | agent.graph | call_llm | question=Move the motor to forward | tool_call_count=1
+2026-10-27 12:56:17 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=19
+2026-10-27 12:56:17 | DEBUG    | agent.graph | Routing -> end
+2026-10-27 12:58:16 | DEBUG    | agent.graph | call_llm | question=Tell me about the weather today. | tool_call_count=0
+2026-10-27 12:58:19 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=130
+2026-10-27 12:58:19 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:57:37 | INFO     | agent.graph | LLM model ready with 9 tools bound
+2026-10-28 16:57:37 | INFO     | agent.graph | Building LangGraph agent...
+2026-10-28 16:57:37 | INFO     | agent.graph | LangGraph checkpointer: in-memory (no persistence)
+2026-10-28 16:57:37 | INFO     | agent.graph | LangGraph agent ready
+2026-10-28 16:57:37 | DEBUG    | agent.graph | call_llm | question=Hello, how are you? | tool_call_count=0
+2026-10-28 16:57:39 | DEBUG    | agent.graph | call_llm done | tool_calls=1 | content_len=0
+2026-10-28 16:57:39 | DEBUG    | agent.graph | Routing -> tools
+2026-10-28 16:57:39 | DEBUG    | agent.graph | run_tools | executing 1 tool call(s)
+2026-10-28 16:57:39 | INFO     | agent.tools | [TOOL] wave
+2026-10-28 16:57:39 | DEBUG    | agent.graph | run_tools done | outputs: Wave gesture activated
+2026-10-28 16:57:39 | DEBUG    | agent.graph | call_llm | question=Hello, how are you? | tool_call_count=1
+2026-10-28 16:57:39 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=72
+2026-10-28 16:57:39 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:57:54 | DEBUG    | agent.graph | call_llm | question=Hello, how are you? | tool_call_count=0
+2026-10-28 16:57:55 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=0
+2026-10-28 16:57:55 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:58:18 | DEBUG    | agent.graph | call_llm | question=Thank you. | tool_call_count=0
+2026-10-28 16:58:19 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=28
+2026-10-28 16:58:19 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:58:27 | DEBUG    | agent.graph | call_llm | question=Hello. | tool_call_count=0
+2026-10-28 16:58:29 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=71
+2026-10-28 16:58:29 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:59:00 | DEBUG    | agent.graph | call_llm | question=Hello, how are you? | tool_call_count=0
+2026-10-28 16:59:01 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=72
+2026-10-28 16:59:01 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:59:21 | DEBUG    | agent.graph | call_llm | question=What is 2 plus 2? | tool_call_count=0
+2026-10-28 16:59:23 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=38
+2026-10-28 16:59:23 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:59:33 | DEBUG    | agent.graph | call_llm | question=yeah I will testing you and I will follow you | tool_call_count=0
+2026-10-28 16:59:34 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=97
+2026-10-28 16:59:34 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 16:59:50 | DEBUG    | agent.graph | call_llm | question=tell me something about Gandhiji | tool_call_count=0
+2026-10-28 16:59:52 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=206
+2026-10-28 16:59:52 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 17:00:32 | DEBUG    | agent.graph | call_llm | question=Can you tell me a story? | tool_call_count=0
+2026-10-28 17:00:33 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=659
+2026-10-28 17:00:33 | DEBUG    | agent.graph | Routing -> end
+2026-10-28 17:02:13 | DEBUG    | agent.graph | call_llm | question=Hey Jarvis, can you tell me a story? | tool_call_count=0
+2026-10-28 17:02:15 | DEBUG    | agent.graph | call_llm done | tool_calls=0 | content_len=659
+2026-10-28 17:02:15 | DEBUG    | agent.graph | Routing -> end

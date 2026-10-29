@@ -1,24 +1,35 @@
-# Vision
-mediapipe
-opencv-python
+# ── Core ──────────────────────────────────────────────────────────────────────
 numpy
+python-dotenv
+pydantic-settings
+requests
 
-# LLM / Agent
+# ── LangGraph / LangChain ─────────────────────────────────────────────────────
 langgraph
+langgraph-checkpoint-postgres
 langchain-core
 langchain-ollama
+langchain-groq
+langchain-openai
 
-# STT
-faster-whisper
-sounddevice
-torch
-torchaudio
+# ── STT ───────────────────────────────────────────────────────────────────────
+groq                             # STT_PROVIDER=groq  (also LLM + TTS)
+# faster-whisper + torch → see requirements.dev.txt (local only)
 
-# TTS
-piper-tts
-soundfile
+# ── TTS ───────────────────────────────────────────────────────────────────────
+# piper-tts → see requirements.dev.txt (local only)
 
-# ESP32 WebSocket bridge
+# ── Server ────────────────────────────────────────────────────────────────────
 websockets
+python-socketio[asyncio]
+aiohttp
 
-dotenv
+# ── Vision ────────────────────────────────────────────────────────────────────
+mediapipe
+opencv-python-headless           # headless — no libGL needed on Linux VPS
+
+# ── Audio decode ──────────────────────────────────────────────────────────────
+av
+
+# ── PostgreSQL ────────────────────────────────────────────────────────────────
+psycopg[binary]

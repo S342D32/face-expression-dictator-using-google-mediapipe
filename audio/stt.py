@@ -1,190 +1,107 @@
 """
-STT — Sarvam realtime streaming (saaras:v3-realtime)
+STT — APK edition: open-source faster-whisper on server.
 
-Uses language_code="auto" so Hindi, Odia, English and all other
-Sarvam-supported languages are detected automatically.
-Detected language is stored in self.detected_language and read by TTS.
+Phone (Expo) and ESP32-S3 send 16 kHz / 16-bit signed / mono LE PCM,
+exactly as the original ESP32 bridge did via binary WebSocket frames.
+The server transcribes with faster-whisper (local, offline).
 
-# ----------------------------------------------------------------
-# Whisper STT (commented out — replaced by Sarvam)
-# from faster_whisper import WhisperModel
-# self.model = WhisperModel(model_path, device="cpu", compute_type="int8")
-# segments, info = self.model.transcribe(audio, language="hi", beam_size=5, vad_filter=True)
-# text = " ".join(seg.text.strip() for seg in segments).strip()
-# ----------------------------------------------------------------
+Language is auto-detected by Whisper and stored in self.detected_language
+so TTS can pick a matching Piper voice.
 """
 
-import asyncio
-import base64
 import logging
 import os
-import threading
 import numpy as np
-import sounddevice as sd
 import torch
 from dotenv import load_dotenv
-from sarvamai import AsyncSarvamAI, RealtimeAudioInput, RealtimeEnd
+
+# APK: open-source Whisper replaces Sarvam streaming
+from faster_whisper import WhisperModel
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-SAMPLE_RATE       = 16000
+SAMPLE_RATE       = 16000          # matches ESP32 + phone AudioTrack / AudioRecord
 CHUNK_SIZE        = 512
 VAD_THRESHOLD     = 0.6
 
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "")
-SARVAM_MODEL   = "saaras:v3-realtime"
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # small/int8 ~ 0.8x realtime on CPU
 
 
 class STT:
 
     def __init__(self):
-        logger.info("Loading Silero VAD (for ESP32 gating)...")
-        self._vad_model, self._vad_utils = torch.hub.load(
+        # APK: keep Silero VAD for ESP32/whisper gating (same as before)
+        logger.info("Loading Silero VAD...")
+        (self._vad_model, self._vad_utils,) = torch.hub.load(
             repo_or_dir="snakers4/silero-vad",
             model="silero_vad",
             force_reload=False,
             trust_repo=True,
         )
         self._get_speech_ts = self._vad_utils[0]
-        logger.info("Silero VAD loaded")
+        logger.info("Silero VAD OK")
+
+        # APK: open-source Whisper replaces Sarvam
+        logger.info("Loading faster-whisper '%s' (int8, cpu)...", WHISPER_MODEL)
+        self.model = WhisperModel(
+            WHISPER_MODEL,
+            device="cpu",
+            compute_type="int8",
+        )
+        logger.info("Whisper ready")
 
         self._running       = False
         self._listen_thread = None
         self._callback      = None
         self.muted          = False
 
-        # Last detected language from Sarvam — read by TTS to match output language
-        self.detected_language = "hi-IN"
+        # Filled by Whisper info.language, read by TTS to match voice
+        self.detected_language = "en"
 
     # ----------------------------------------------------------------
-    # Silero VAD — used by ESP32 bridge to gate chunks
+    # Silero VAD — gates ESP32 / phone PCM chunks (unchanged)
     # ----------------------------------------------------------------
-
     def _is_speech(self, chunk: np.ndarray) -> bool:
         tensor = torch.from_numpy(chunk.flatten()).float()
         return self._vad_model(tensor, SAMPLE_RATE).item() >= VAD_THRESHOLD
 
     # ----------------------------------------------------------------
-    # ESP32 audio — one-shot transcribe
+    # One-shot transcribe  (used by ESP32 + phone bridges)
+    # APK: open-source Whisper replaces Sarvam streaming
     # ----------------------------------------------------------------
-
     def _transcribe(self, frames: list) -> str:
-        audio     = np.concatenate(frames, axis=0).flatten()
-        pcm_bytes = (audio * 32768).astype(np.int16).tobytes()
+        # frames: list of np.ndarray float32 mono 16 kHz
+        audio = np.concatenate(frames, axis=0).flatten()
+        int_audio = (audio * 32768).astype(np.int16)
         try:
-            return asyncio.run(self._sarvam_transcribe_once(pcm_bytes))
+            segments, info = self.model.transcribe(
+                int_audio,
+                beam_size=5,
+                vad_filter=True,
+            )
+            text = " ".join(seg.text.strip() for seg in segments).strip()
+            lang = getattr(info, "language", None) or getattr(info, "detected_language", None)
+            if lang:
+                self.detected_language = lang
+            logger.info("Whisper [%s]: %s", self.detected_language, text)
+            return text
         except Exception:
-            logger.exception("ESP32 Sarvam transcribe error")
+            logger.exception("Whisper transcribe error")
             return ""
 
-    async def _sarvam_transcribe_once(self, pcm_bytes: bytes) -> str:
-        client = AsyncSarvamAI(api_subscription_key=SARVAM_API_KEY)
-        text   = ""
-        async with client.speech_to_text_realtime_streaming.connect(
-            language_code="auto",
-            model=SARVAM_MODEL,
-            stream_type="fast",
-            sample_rate=SAMPLE_RATE,
-        ) as ws:
-            CHUNK = 3200
-            for i in range(0, len(pcm_bytes), CHUNK):
-                await ws.send_realtime_audio_input(
-                    RealtimeAudioInput(audio=base64.b64encode(pcm_bytes[i:i+CHUNK]).decode())
-                )
-            await ws.send_realtime_end(RealtimeEnd())
-            async for msg in ws:
-                if msg.event == "transcript.final":
-                    text = msg.text or ""
-                    if hasattr(msg, "language") and msg.language:
-                        self.detected_language = msg.language
-                        logger.info("ESP32 detected language: %s", msg.language)
-                    break
-                elif msg.event == "error" and msg.is_fatal:
-                    logger.error("Sarvam STT error: %s", msg.message)
-                    break
-        return text.strip()
-
     # ----------------------------------------------------------------
-    # PC mic — continuous Sarvam realtime stream
+    # PC-mic fallback (deprecated for APK): kept as no-op so
+    # main.py:start_continuous won't raise if run without phone.
+    # APK sets stt.start_continuous disabled in main loop.
     # ----------------------------------------------------------------
-
-    def start_continuous(self, callback):
-        if self._running:
-            return
+    def start_continuous(self, callback=None):
         self._callback = callback
-        self._running  = True
-        self._listen_thread = threading.Thread(target=self._run_async_loop, daemon=True)
-        self._listen_thread.start()
-        logger.info("Sarvam realtime STT started (auto language detection)")
+        self._running  = False
+        logger.info("STT continuous disabled in APK mode (phone/ESP32 drives server)")
 
     def stop_continuous(self):
         self._running = False
-        logger.info("Sarvam realtime STT stopped")
+        logger.info("STT continuous stopped")
 
-    def _run_async_loop(self):
-        asyncio.run(self._continuous_stream())
-
-    async def _continuous_stream(self):
-        logger.info("Connecting to Sarvam realtime STT...")
-        while self._running:
-            try:
-                client = AsyncSarvamAI(api_subscription_key=SARVAM_API_KEY)
-                async with client.speech_to_text_realtime_streaming.connect(
-                    language_code="auto",
-                    model=SARVAM_MODEL,
-                    stream_type="fast",
-                    sample_rate=SAMPLE_RATE,
-                    silence_duration_ms=700,
-                    min_speech_duration_ms=300,
-                ) as ws:
-                    logger.info("Sarvam STT connected")
-                    await asyncio.gather(
-                        self._send_mic_audio(ws),
-                        self._receive_transcripts(ws),
-                    )
-            except Exception:
-                logger.exception("Sarvam STT connection error — reconnecting in 2s")
-                await asyncio.sleep(2)
-
-    async def _send_mic_audio(self, ws):
-        loop = asyncio.get_event_loop()
-        q    = asyncio.Queue()
-
-        def mic_callback(indata, frames, time, status):
-            if not self.muted:
-                loop.call_soon_threadsafe(q.put_nowait, indata.copy())
-
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="int16",
-            blocksize=CHUNK_SIZE,
-            callback=mic_callback,
-        ):
-            logger.info("PC mic streaming to Sarvam (auto language)...")
-            while self._running:
-                chunk = await q.get()
-                await ws.send_realtime_audio_input(
-                    RealtimeAudioInput(audio=base64.b64encode(chunk.tobytes()).decode())
-                )
-
-    async def _receive_transcripts(self, ws):
-        async for msg in ws:
-            if msg.event == "transcript.final" and msg.text:
-                text = msg.text.strip()
-                # Update detected language for TTS to match
-                if hasattr(msg, "language") and msg.language:
-                    self.detected_language = msg.language
-                    logger.info("Detected language: %s", msg.language)
-                if text:
-                    logger.info("Sarvam final [%s]: %s", self.detected_language, text)
-                    if self._callback:
-                        self._callback(text)
-            elif msg.event == "transcript.partial" and msg.text:
-                logger.debug("Sarvam partial: %s", msg.text)
-            elif msg.event == "error":
-                logger.error("Sarvam STT error %s: %s", msg.code, msg.message)
-                if msg.is_fatal:
-                    break
